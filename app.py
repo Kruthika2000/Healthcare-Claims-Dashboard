@@ -5,43 +5,23 @@ import random
 from datetime import datetime, timedelta
 import matplotlib.pyplot as plt
 
-# --- 1. DATA GENERATION ENGINE (ENHANCED US HEALTHCARE SCHEMAS) ---
+# --- 1. DATA GENERATION ENGINE ---
 def init_db():
     conn = sqlite3.connect('healthcare_analytics.db')
     cursor = conn.cursor()
-    
-    # Reset table to apply new structural columns cleanly
     cursor.execute("DROP TABLE IF EXISTS claims")
-    
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS claims (
-        claim_id TEXT PRIMARY KEY,
-        patient_id TEXT,
-        patient_age INTEGER,
-        patient_gender TEXT,
-        provider_name TEXT,
-        npi_number TEXT,
-        icd10_code TEXT,
-        cpt_code TEXT,
-        pos_code TEXT,
-        billed_amount REAL,
-        deductible_applied REAL,
-        coinsurance_applied REAL,
-        copay_applied REAL,
-        allowed_amount REAL,
-        status TEXT,
-        submission_date TEXT,
-        rejection_reason TEXT
+        claim_id TEXT PRIMARY KEY, patient_id TEXT, patient_age INTEGER, patient_gender TEXT,
+        provider_name TEXT, npi_number TEXT, icd10_code TEXT, cpt_code TEXT, pos_code TEXT,
+        billed_amount REAL, deductible_applied REAL, coinsurance_applied REAL, copay_applied REAL,
+        allowed_amount REAL, status TEXT, submission_date TEXT, rejection_reason TEXT
     )''')
     
     providers = {
-        "Seoul General Hospital": "1982730491", 
-        "Asan Medical Center": "1457392014", 
-        "Samsung Medical": "1029384756", 
-        "Yonsei Severance": "1847392019"
+        "Seoul General Hospital": "1982730491", "Asan Medical Center": "1457392014", 
+        "Samsung Medical": "1029384756", "Yonsei Severance": "1847392019"
     }
-    
-    # US Healthcare standard data mappings
     icd10_map = {"I10": "Hypertension", "E11.9": "Type 2 Diabetes", "J45.909": "Asthma", "Z00.00": "General Checkup"}
     cpt_map = {"99213": "Outpatient Visit (15 min)", "99214": "Outpatient Visit (25 min)", "93000": "EKG tracing", "36415": "Blood draw"}
     pos_map = {"11": "Office", "21": "Inpatient Hospital", "22": "On-Campus Outpatient"}
@@ -60,13 +40,9 @@ def init_db():
         billed = round(random.uniform(80.0, 6200.0), 2)
         date = (datetime.now() - timedelta(days=random.randint(0, 60))).strftime('%Y-%m-%d')
         
-        # Financial defaults
-        deductible = 0.0
-        coinsurance = 0.0
-        copay = 0.0
+        deductible, coinsurance, copay = 0.0, 0.0, 0.0
         reason = "Approved per Standard Schedule Fee"
         
-        # --- ENHANCED ADJUDICATION COMPLEX RULES ENGINE ---
         if billed > 5000.0 and pos == "11":
             status, allowed, reason = "Denied", 0.0, "POS Error: Office billed amount exceeds structural threshold limits."
         elif age > 65 and icd == "Z00.00" and billed > 3000.0:
@@ -78,7 +54,6 @@ def init_db():
         else:
             status = "Approved"
             allowed = round(billed * 0.82, 2)
-            # Break down financial components
             copay = 25.00 if pos == "11" else 100.00
             if allowed > copay:
                 coinsurance = round((allowed - copay) * 0.20, 2)
@@ -87,7 +62,6 @@ def init_db():
                 
         cursor.execute("INSERT INTO claims VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", 
                        (c_id, p_id, age, gender, prov, npi, icd, cpt, pos, billed, deductible, coinsurance, copay, allowed, status, date, reason))
-        
     conn.commit()
     conn.close()
 
@@ -104,14 +78,40 @@ st.set_page_config(page_title="US Healthcare Claims Engine Dashboard", layout="w
 st.title("🏥 Core US Healthcare Claims Adjudication & Analytics Suite")
 st.markdown("Automated Clearinghouse Rule Engine Proof-of-Concept | Developed by Tech PM / Data Analyst Candidates")
 
-# --- INTERACTIVE DASHBOARD SIDEBAR FILTERS ---
-st.sidebar.header("⚙️ Core Adjudication Filters")
-selected_prov = st.sidebar.multiselect("Provider Network Filter:", options=df["provider_name"].unique(), default=df["provider_name"].unique())
-selected_status = st.sidebar.multiselect("Adjudication State Filter:", options=df["status"].unique(), default=df["status"].unique())
-selected_pos = st.sidebar.multiselect("Place of Service (POS) Filter:", options=df["pos_code"].unique(), default=df["pos_code"].unique())
+# --- PRODUCT INTERACTIVE SIMULATOR ---
+st.sidebar.header("🚀 PM Feature Simulation")
+ai_feature = st.sidebar.toggle("Deploy AI Auto-Approval Module (V1.2)")
 
-# Dynamically apply the multiple layers of UI filters
-f_df = df[(df["provider_name"].isin(selected_prov)) & (df["status"].isin(selected_status)) & (df["pos_code"].isin(selected_pos))]
+if ai_feature:
+    df.loc[df['status'] == 'Pending Review', 'rejection_reason'] = "AI Auto-Approved: High Probability Validity Score"
+    df.loc[df['status'] == 'Pending Review', 'status'] = "Approved"
+    st.sidebar.success("✅ AI Feature Active: Pending queue automated!")
+
+# --- 🛠️ DYNAMIC HOVER FILTERS SETUP (USER CAN SELECT OR UNSELECT ALL) ---
+st.sidebar.markdown("---")
+st.sidebar.header("⚙️ Core Adjudication Filters")
+st.sidebar.info("💡 Pro-Tip: If you remove all tags from a box, the filter automatically resets to display ALL records.")
+
+# 1. Provider Filter
+available_providers = sorted(df["provider_name"].unique())
+selected_prov = st.sidebar.multiselect("Provider Network Filter:", options=available_providers, default=available_providers)
+
+# 2. Status Filter
+available_statuses = sorted(df["status"].unique())
+selected_status = st.sidebar.multiselect("Adjudication State Filter:", options=available_statuses, default=available_statuses)
+
+# 3. Place of Service Filter
+available_pos = sorted(df["pos_code"].unique())
+selected_pos = st.sidebar.multiselect("Place of Service (POS) Filter:", options=available_pos, default=available_pos)
+
+# --- 🔥 ADAPTIVE DATA FILTERING ENGINE ---
+# Fallback logic: If user clears out choices completely, select everything instead of crashing the graphs.
+final_prov = selected_prov if len(selected_prov) > 0 else available_providers
+final_status = selected_status if len(selected_status) > 0 else available_statuses
+final_pos = selected_pos if len(selected_pos) > 0 else available_pos
+
+# Filter rows
+f_df = df[(df["provider_name"].isin(final_prov)) & (df["status"].isin(final_status)) & (df["pos_code"].isin(final_pos))]
 
 # --- METRIC HEADERS ---
 m_col1, m_col2, m_col3, m_col4 = st.columns(4)
@@ -129,7 +129,7 @@ c_col1, c_col2 = st.columns(2)
 with c_col1:
     st.subheader("📊 Volumetric Breakdown by Status & Demographics")
     if not f_df.empty:
-        fig, ax = plt.subplots(figsize=(6,  6))
+        fig, ax = plt.subplots(figsize=(6, 3.5))
         f_df.groupby(['status', 'patient_gender']).size().unstack(fill_value=0).plot(kind='bar', stacked=True, ax=ax, color=['#3498db', '#e74c3c', '#95a5a6'])
         ax.set_ylabel("Claim Count")
         plt.xticks(rotation=0)
@@ -142,7 +142,7 @@ with c_col2:
     den_records = f_df[f_df["status"] == "Denied"]
     reasons = den_records["rejection_reason"].value_counts()
     if not reasons.empty:
-        fig, ax = plt.subplots(figsize=(6, 6))
+        fig, ax = plt.subplots(figsize=(6, 3.5))
         reasons.plot(kind='pie', autopct='%1.1f%%', colors=['#e74c3c', '#e67e22', '#f1c40f', '#34495e'], ax=ax)
         ax.set_ylabel("")
         st.pyplot(fig)
